@@ -1,0 +1,24 @@
+# dependencies
+node_modules/
+
+# environment variables
+.env
+.env.*
+!.env.example
+
+# Next.js
+.next/
+out/
+
+# backend build
+backend/dist/
+
+# logs
+*.log
+
+# coverage
+coverage/
+
+# OS
+.DS_Store
+Thumbs.db
