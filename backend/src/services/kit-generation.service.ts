@@ -292,3 +292,167 @@ export async function generateKit(
 
   return validation.data;
 }
+
+export async function regenerateKitQuestions(
+  existingKit: Kit,
+  editedQuestionIds: string[],
+  days: number
+): Promise<Kit> {
+  // --------------------------------------------------
+  // 1. Keep questions the user manually edited
+  // --------------------------------------------------
+
+  const editedIds = new Set(editedQuestionIds);
+
+  const preservedQuestions = existingKit.questions.filter((question) =>
+    editedIds.has(question.id)
+  );
+
+  // --------------------------------------------------
+  // 2. Generate fresh questions
+  // --------------------------------------------------
+
+  const generatedQuestions = await generateQuestions(
+    existingKit.role.requirements,
+    existingKit.company_brief,
+    Math.max(10, existingKit.role.requirements.length * 2)
+  );
+
+  let freshQuestions = normalizeQuestions(generatedQuestions);
+
+  // --------------------------------------------------
+  // 3. Remove generated questions whose IDs collide
+  //    with preserved questions
+  // --------------------------------------------------
+
+  const preservedIds = new Set(
+    preservedQuestions.map((question) => question.id)
+  );
+
+  freshQuestions = freshQuestions.filter(
+    (question) => !preservedIds.has(question.id)
+  );
+
+  // --------------------------------------------------
+  // 4. Give fresh questions stable unique IDs
+  // --------------------------------------------------
+
+  const usedIds = new Set(
+    preservedQuestions.map((question) => question.id)
+  );
+
+  let nextQuestionNumber = 1;
+
+  freshQuestions = freshQuestions.map((question) => {
+    while (usedIds.has(`q${nextQuestionNumber}`)) {
+      nextQuestionNumber++;
+    }
+
+    const id = `q${nextQuestionNumber}`;
+    nextQuestionNumber++;
+
+    usedIds.add(id);
+
+    return {
+      ...question,
+      id,
+    };
+  });
+
+  // --------------------------------------------------
+  // 5. Combine preserved + regenerated questions
+  // --------------------------------------------------
+
+  let questions = [
+    ...preservedQuestions,
+    ...freshQuestions,
+  ];
+
+  // --------------------------------------------------
+  // 6. Check coverage
+  // --------------------------------------------------
+
+  let uncovered = findCoverageGaps(
+    existingKit.role.requirements,
+    questions
+  );
+
+  // --------------------------------------------------
+  // 7. Second pass for missing requirements
+  // --------------------------------------------------
+
+  if (uncovered.length > 0) {
+    questions = await completeCoverage(
+      existingKit.role.requirements,
+      questions,
+      existingKit.company_brief
+    );
+  }
+
+  // --------------------------------------------------
+  // 8. Check coverage again
+  // --------------------------------------------------
+
+  uncovered = findCoverageGaps(
+    existingKit.role.requirements,
+    questions
+  );
+
+  if (uncovered.length > 0) {
+    throw new Error(
+      `Unable to cover required requirements: ${uncovered.join(", ")}`
+    );
+  }
+
+  // --------------------------------------------------
+  // 9. Regenerate flashcards from the new questions
+  // --------------------------------------------------
+
+  const flashcards = await generateFlashcards(
+    existingKit.role.requirements,
+    questions
+  );
+
+  // --------------------------------------------------
+  // 10. Recalculate schedule
+  // --------------------------------------------------
+
+  const schedule = allocateSchedule(
+    questions,
+    existingKit.role.requirements,
+    days
+  );
+
+  // --------------------------------------------------
+  // 11. Build updated kit
+  // --------------------------------------------------
+
+  const updatedKit: Kit = {
+    ...existingKit,
+
+    questions,
+
+    flashcards,
+
+    schedule,
+
+    coverage: {
+      uncovered_requirement_ids: uncovered,
+      passes: 2,
+    },
+  };
+
+  // --------------------------------------------------
+  // 12. Final validation
+  // --------------------------------------------------
+
+  const validation = KitSchema.safeParse(updatedKit);
+
+  if (!validation.success) {
+    throw new Error(
+      `Regenerated kit failed validation: ${validation.error.message}`
+    );
+  }
+
+  return validation.data;
+}

@@ -12,6 +12,7 @@ export interface IKit extends Document {
     location: string;
   };
   kit?: Kit;
+  editedQuestionIds: string[];
   error?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -48,6 +49,11 @@ const kitSchema = new Schema<IKit>(
 
     kit: {
       type: Schema.Types.Mixed,
+    },
+
+    editedQuestionIds: {
+      type: [String],
+      default: [],
     },
 
     error: {
