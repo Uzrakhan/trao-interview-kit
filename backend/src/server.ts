@@ -11,14 +11,24 @@ dotenv.config();
 
 const app = express();
 
-const allowedOrigins = [
+
+
+const allowedOrigins = new Set([
   "http://localhost:3000",
+  "https://trao-interview-kit-gules.vercel.app",
   process.env.FRONTEND_URL,
-].filter((origin): origin is string => Boolean(origin));
+]);
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.has(origin)) {
+        callback(null, true);
+      } else {
+        console.log("CORS blocked:", origin);
+        callback(new Error(`CORS blocked origin: ${origin}`));
+      }
+    },
     credentials: true,
   })
 );
